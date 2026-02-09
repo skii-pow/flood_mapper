@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Demo Bản đồ cảnh báo lũ lụt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      crossorigin=""
+    />
+
+    <!-- CSS custom -->
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+
+  <body>
+    <div class="layout">
+      <header>
+        <div>
+          <h1>Bản đồ giả lập cảnh báo lũ lụt</h1>
+          <span>Demo 4 khu vực độ cao, sông và mạng lưới đường phục vụ tìm đường an toàn</span>
+        </div>
+      </header>
+
+      <div id="map"></div>
+
+      <aside>
+        <div class="stations-panel">
+          <div class="panel-section-title">Trạm đo mực nước</div>
+          <div id="stations-list" style="max-height: 300px; overflow-y: auto;">
+            <div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Đang tải...</div>
+          </div>
+        </div>
+
+        <div class="rescue-panel">
+          <div class="panel-section-title">Phát tín hiệu cần cứu hộ</div>
+          <button id="rescue-toggle-btn" class="rescue-button" onclick="toggleRescueMode()">
+            Phát tín hiệu cần cứu
+          </button>
+          <div id="rescue-info" class="rescue-info">
+            Nhấn nút để bật chế độ phát tín hiệu cần cứu
+          </div>
+          <div id="rescue-count" class="rescue-count">
+            Có 0 điểm cần cứu hộ
+          </div>
+        </div>
+
+      </aside>
+    </div>
+
+    <!-- Modal form phát tín hiệu cầu cứu -->
+    <div id="rescue-modal" class="modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>🚨 Phát tín hiệu cần cứu hộ</h3>
+          <span class="modal-close" onclick="closeRescueModal()">&times;</span>
+        </div>
+        <form id="rescue-form" onsubmit="submitRescueForm(event)">
+          <div class="form-group">
+            <label for="rescue-phone">Số điện thoại <span style="color: #e74c3c;">*</span></label>
+            <input type="tel" id="rescue-phone" required placeholder="Nhập số điện thoại liên hệ" />
+          </div>
+          <div class="form-group">
+            <label for="rescue-people">Số người cần cứu</label>
+            <input type="number" id="rescue-people" min="1" placeholder="Số người (tùy chọn)" />
+          </div>
+          <div class="form-group">
+            <label for="rescue-urgency">Mức độ khẩn cấp</label>
+            <select id="rescue-urgency">
+              <option value="normal">Bình thường</option>
+              <option value="urgent">Khẩn cấp</option>
+              <option value="critical">Rất khẩn cấp</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="rescue-notes">Thông tin chi tiết</label>
+            <textarea id="rescue-notes" rows="3" placeholder="Mô tả tình huống, địa điểm cụ thể..."></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" onclick="closeRescueModal()">Hủy</button>
+            <button type="submit" class="btn-submit">Gửi tín hiệu cứu hộ</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- File JS custom -->
+    <script src="js/map.js"></script>
+  </body>
+</html>

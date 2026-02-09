@@ -1,0 +1,180 @@
+{
+"type":"FeatureCollection",
+"name":"city_map",
+"crs":{
+    "type": "name",
+    "propeties":{
+        "name":"CRS:Simple-ImagePixels"
+    }
+},
+"feature":[
+    {
+        "type": "Feature",
+        "propeties":{
+            "type":"zone",
+            "id": "A",
+            "name": "Zone 4-High elevation/Very low flood risk",
+            "elevation_label":"Very high",
+            "flood_risk":"Very low",
+            "description":"Top-most residential area, farthest from the river. Consider this the safest evacuation zone.",
+            "is_safe_zone":true
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [84,51],
+                [817,52],
+                [814,281],
+                [748,206],
+                [684,265],
+                [645,297],
+                [86,273],
+                [84,219],
+                [85,123]
+            ]
+        ]
+    }
+    },
+    {
+        "type": "Feature",
+        "propeties":{
+            "type":"zone",
+            "id": "B",
+            "name": "Zone 3-Relatively high/ Low flood risk",
+            "elevation_label":"high",
+            "flood_risk":"low",
+            "description":"Central area above the river-facing blocks. Streets and housing blocks at a relatively good elevation.",
+            "is_safe_zone":false
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [92,302],
+                [633,312],
+                [718,263],
+                [778,312],
+                [645,469],
+                [559,531],
+                [462,551],
+                [90,547]
+            ]
+        ]
+    }
+    },
+    {
+        "type": "Feature",
+        "propeties":{
+            "type":"zone",
+            "id": "C",
+            "name": "Zone 2-Medium elevation/ Medium flood risk",
+            "elevation_label":"medium",
+            "flood_risk":"medium",
+            "description":"Curved river-facing neighborhood on the right-hand side. Closer to the river with moderate flood risk.",
+            "is_safe_zone":false
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [451,576],
+                [561,555],
+                [628,511],
+                [790,338],
+                [891,426],
+                [774,556],
+                [696,631],
+                [549,702],
+                [455,725]
+            ]
+        ]
+    }
+    },
+    {
+        "type": "Feature",
+        "propeties":{
+            "type":"zone",
+            "id": "D",
+            "name": "Zone 1-Low elevation/ High flood risk",
+            "elevation_label":"low",
+            "flood_risk":"low",
+            "description":"Lowest blocks directly adjacent to the river embankment. This zone should be evacuated first when water rises",
+            "is_safe_zone":false
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [89,568],
+                [428,571],
+                [426,734],
+                [49,734],
+                [49,665],
+                [89,663]
+                
+            ]
+        ]
+    }
+    },
+       {
+        "type": "Feature",
+        "propeties":{
+            "type":"river",
+            "id": "rl",
+            "name": "River",
+            "flow_description":"Approx. West-East along the bottom edge.",
+            "description":"Left-side part of the river polygon as drawn in the site plan."
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [23,746],
+                [122,752],
+                [206,751],
+                [250,759],
+                [293,753],
+                [366,758],
+                [422,750],
+                [422,867],
+                [386,868],
+                [328,882],
+                [275,882],
+                [79,876],
+                [27,882]
+            ]
+        ]
+    }
+    },
+    {
+        "type": "Feature",
+        "propeties":{
+            "type":"river",
+            "id": "rr",
+            "name": "River",
+            "flow_description":"Approx. West-East along the bottom edge.",
+            "description":"Right-side part of the river polygon as drawn in the site plan."
+        },
+    "geomtry":{
+        "type":"Polygon",
+        "coordinates":[
+            [
+                [452,746],
+                [551,718],
+                [647,672],
+                [734,610],
+                [778,560],
+                [829,506],
+                [881,440],
+                [904,647],
+                [802,726],
+                [714,796],
+                [572,848],
+                [456,862]
+            ]
+        ]
+    }
+    }
+]
+}

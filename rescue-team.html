@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Trang đội cứu hộ - Bản đồ cảnh báo lũ lụt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Leaflet CSS -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      crossorigin=""
+    />
+
+    <!-- CSS custom -->
+    <link rel="stylesheet" href="css/style.css" />
+    <style>
+      .rescue-list {
+        max-height: 400px;
+        overflow-y: auto;
+        margin-top: 12px;
+      }
+      .rescue-list::-webkit-scrollbar {
+        width: 6px;
+      }
+      .rescue-list::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.2);
+        border-radius: 3px;
+      }
+      .rescue-list::-webkit-scrollbar-thumb {
+        background: rgba(231, 76, 60, 0.5);
+        border-radius: 3px;
+      }
+      .rescue-list::-webkit-scrollbar-thumb:hover {
+        background: rgba(231, 76, 60, 0.7);
+      }
+      .rescue-item {
+        background: rgba(231, 76, 60, 0.1);
+        border-left: 3px solid #e74c3c;
+        border-bottom: none !important;
+        border-top: none;
+        border-right: none;
+        padding: 10px;
+        margin-bottom: 8px;
+        border-radius: 4px;
+        cursor: pointer;
+        transition: all 0.2s;
+        outline: none !important;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-focus-ring-color: transparent;
+      }
+      .rescue-item:hover {
+        background: rgba(231, 76, 60, 0.2);
+        transform: translateX(2px);
+      }
+      .rescue-item:focus {
+        outline: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+      .rescue-item:active {
+        outline: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+      .rescue-item:focus-visible {
+        outline: none !important;
+        border-bottom: none !important;
+      }
+      .rescue-item.rescued {
+        background: rgba(149, 165, 166, 0.1);
+        border-left-color: #95a5a6;
+      }
+      .rescue-item.rescued:hover {
+        background: rgba(149, 165, 166, 0.2);
+      }
+      .rescue-item-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+      }
+      .rescue-item-time {
+        font-size: 11px;
+        color: #95a5a6;
+      }
+      .rescue-item-notes {
+        font-size: 12px;
+        margin-top: 4px;
+        color: #ecf0f1;
+        line-height: 1.4;
+      }
+      .rescue-item-details {
+        font-size: 12px;
+        color: #95a5a6;
+        margin-top: 4px;
+        line-height: 1.5;
+      }
+      .status-badge {
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .status-active {
+        background: #e74c3c;
+        color: white;
+      }
+      .status-rescued {
+        background: #95a5a6;
+        color: white;
+      }
+      #search-input:focus,
+      #filter-status:focus,
+      #filter-urgency:focus {
+        outline: none;
+        border-color: #e74c3c;
+        box-shadow: 0 0 0 2px rgba(231, 76, 60, 0.2);
+      }
+      .station-item {
+        outline: none !important;
+        -webkit-tap-highlight-color: transparent;
+        -webkit-focus-ring-color: transparent;
+      }
+      .station-item:focus {
+        outline: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+      .station-item:active {
+        outline: none !important;
+        border-bottom: none !important;
+        box-shadow: none !important;
+      }
+      .station-item:focus-visible {
+        outline: none !important;
+        border-bottom: none !important;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="layout">
+      <header>
+        <div>
+          <h1>Trang đội cứu hộ</h1>
+          <span>Xem và quản lý các điểm cần cứu hộ</span>
+        </div>
+        <a href="index.html" style="color: #2ecc71; text-decoration: none; font-size: 14px;">
+          ← Về trang xem mực nước
+        </a>
+      </header>
+
+      <div id="map"></div>
+
+      <aside>
+        <div class="stations-panel" style="background: rgba(52, 152, 219, 0.1); border: 1px solid rgba(52, 152, 219, 0.3); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+          <div class="panel-section-title">Trạm đo mực nước</div>
+          <div id="stations-list" style="max-height: 200px; overflow-y: auto;">
+            <div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Đang tải...</div>
+          </div>
+        </div>
+
+        <div class="rescue-panel">
+          <div class="panel-section-title">Danh sách điểm cần cứu hộ</div>
+          <div id="rescue-count" class="rescue-count" style="margin-bottom: 12px;">
+            Đang tải...
+          </div>
+          
+          <!-- Search và Filter -->
+          <div style="margin-bottom: 12px;">
+            <input 
+              type="text" 
+              id="search-input" 
+              placeholder="🔍 Tìm kiếm (SĐT, ghi chú...)" 
+              style="
+                width: 100%;
+                padding: 8px 12px;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: #ecf0f1;
+                font-size: 13px;
+                margin-bottom: 8px;
+                box-sizing: border-box;
+              "
+              oninput="filterRescueList()"
+            />
+            <select 
+              id="filter-status" 
+              style="
+                width: 48%;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: #ecf0f1;
+                font-size: 12px;
+                margin-right: 4%;
+                box-sizing: border-box;
+              "
+              onchange="filterRescueList()"
+            >
+              <option value="all">Tất cả trạng thái</option>
+              <option value="active">Cần cứu</option>
+              <option value="rescued">Đã cứu</option>
+            </select>
+            <select 
+              id="filter-urgency" 
+              style="
+                width: 48%;
+                padding: 8px;
+                background: rgba(0, 0, 0, 0.3);
+                border: 1px solid rgba(255, 255, 255, 0.1);
+                border-radius: 6px;
+                color: #ecf0f1;
+                font-size: 12px;
+                box-sizing: border-box;
+              "
+              onchange="filterRescueList()"
+            >
+              <option value="all">Tất cả mức độ</option>
+              <option value="critical">🔴 Rất khẩn cấp</option>
+              <option value="urgent">🟡 Khẩn cấp</option>
+              <option value="normal">🟢 Bình thường</option>
+            </select>
+          </div>
+          
+          <div id="rescue-list" class="rescue-list"></div>
+          <button onclick="clearAllRescued()" class="rescue-button" style="margin-top: 12px; background: #95a5a6;">
+            Xóa tất cả điểm đã cứu
+          </button>
+        </div>
+
+        <div class="legend-group">
+          <div class="legend-title">Chú thích</div>
+          <div class="legend-item">
+            <span style="display: inline-block; width: 20px; height: 20px; background: #e74c3c; border-radius: 50%; border: 2px solid white; margin-right: 8px;"></span>
+            Điểm cần cứu hộ
+          </div>
+          <div class="legend-item">
+            <span style="display: inline-block; width: 20px; height: 20px; background: #95a5a6; border-radius: 50%; border: 2px solid white; margin-right: 8px;"></span>
+            Đã được cứu
+          </div>
+          <div class="legend-item" style="margin-top: 8px;">
+            <strong>Mức độ khẩn cấp:</strong>
+          </div>
+          <div class="legend-item">
+            <span style="color: #e74c3c; margin-right: 8px;">🔴</span>
+            Rất khẩn cấp
+          </div>
+          <div class="legend-item">
+            <span style="color: #f1c40f; margin-right: 8px;">🟡</span>
+            Khẩn cấp
+          </div>
+          <div class="legend-item">
+            <span style="color: #2ecc71; margin-right: 8px;">🟢</span>
+            Bình thường
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- File JS custom -->
+    <script src="js/rescue-team.js"></script>
+  </body>
+</html>
+
