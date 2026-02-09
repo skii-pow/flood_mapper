@@ -1,0 +1,6 @@
+id,name,location_lat,location_lng,threshold_safe,threshold_warning,threshold_danger,status,create_at
+1,Trạm Cầu Rồng,16.060553,108.227380,50.00,100.00,150.00,active,2026-02-09T00:00:00.000Z
+2,Trạm Sông Hàn,16.068920,108.222090,45.00,90.00,140.00,active,2026-02-09T00:00:00.000Z
+3,Trạm Cầu Thuận Phước,16.087250,108.205970,55.00,110.00,160.00,active,2026-02-09T00:00:00.000Z
+4,Trạm Hòa Xuân,16.030000,108.150000,40.00,85.00,130.00,active,2026-02-09T00:00:00.000Z
+5,Trạm Hải Châu,16.055000,108.210000,48.00,95.00,145.00,active,2026-02-09T00:00:00.000Z

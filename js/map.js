@@ -1,11 +1,9 @@
 const DN_center=[16.0544, 108.2022];
 const map= L.map("map", {
-    center: DN_center,
     zoomControl: true,
     minZoom: 10,
-    maxZoom: 18,
-    }
-);
+    maxZoom: 18
+}).setView(DN_center, 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
@@ -176,13 +174,13 @@ async function loadStations() {
     const stations =await getStations();
 
     for (const station of stations){
-        const detals= await notiSta(station.id);
+        const details= await notiSta(station.id);
     let color = '#95a5a6';
-    let floodLevel='unknow';
+    let floodLevel='unknown';
     let waterLevel=null;
-    if (detals){
-        floodLevel=detals.flood_level || 'unknow';
-        waterLevel=detals.current_water_lever;
+    if (details){
+        floodLevel=details.flood_level || 'unknown';
+        waterLevel=details.current_water_level;
         switch (floodLevel){
             case 'safe':
                 color='#2ecc71';
@@ -273,17 +271,17 @@ async function loadStations() {
 }
 
 async function capnhatDsSOS(stations) {
-    const sationsListDiv = document.getElementById('station-list');
-    if (!sationsListDiv) return;
+    const stationsListDiv = document.getElementById('stations-list');
+    if (!stationsListDiv) return;
     if (stations.length===0){
-        sationsListDiv.innerHTML= '<div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Chưa có trạm nào</div>';
+        stationsListDiv.innerHTML= '<div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Chưa có trạm nào</div>';
         return;
     }
     let html='';
     for (const station of stations){
-        const detals=await notiSta(station.id);
-        const floodLevel=detals?.flood_level || 'unknown';
-        const waterLevel = detals?.current_water_lever;
+        const details=await notiSta(station.id);
+        const floodLevel=details?.flood_level || 'unknown';
+        const waterLevel = details?.current_water_level;
         const floodLevelText={
             'safe': '🟢 An toàn',
           'caution': '🟡 Cảnh báo nhẹ',
@@ -316,7 +314,7 @@ async function capnhatDsSOS(stations) {
         </div>
       `;
         }
-    sationsListDiv.innerHTML=html;
+    stationsListDiv.innerHTML=html;
     }
 
     window.focusOnStation=function(stationId){
@@ -353,22 +351,22 @@ async function capnhatDsSOS(stations) {
     window.toggleRescueMode= function(){
         isRecuseMode=!isRecuseMode;
         const btn=document.getElementById('rescue-toggle-btn');
-        const infor=document.getElementById('rescue-infor');
+        const info=document.getElementById('rescue-info');
 
         if (isRecuseMode){
             btn.textContent='Tắt phát tín hiệu';
             btn.style.background='#e74c3c';
-            if (infor){
-                infor.textContent='Click vào bản đồ để đặt điểm cần cứu hộ';
-                infor.style.color='#e74c3c';
+            if (info){
+                info.textContent='Click vào bản đồ để đặt điểm cần cứu hộ';
+                info.style.color='#e74c3c';
             }
             map.getContainer().style.cursor='crosshair';
         } else{
             btn.textContent='Phát tín hiệu cần cứu';
             btn.style.background='#e74c3c';
-            if(infor){
-                infor.textContent='Nhấn nút để bật chế độ phát tính hiệu cầu cứu';
-                infor.style.color='#95a5a6';
+            if(info){
+                info.textContent='Nhấn nút để bật chế độ phát tín hiệu cần cứu';
+                info.style.color='#95a5a6';
             }
             map.getContainer().style.cursor='';
         }
@@ -411,7 +409,7 @@ async function capnhatDsSOS(stations) {
         const phone=document.getElementById('rescue-phone').value.trim();
         const peopleCount=document.getElementById('rescue-people').value;
         const urgency=document.getElementById('rescue-urgency').value;
-        const notes=document.getElementById('rescue-note').value.trim();
+        const notes=document.getElementById('rescue-notes').value.trim();
 
         if(!phone){
             alert ('Vui lòng nhập số điện thoại');

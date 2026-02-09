@@ -1,6 +1,5 @@
 const express = require('express');
 const cors = require('cors');
-const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 const csv = require('csv-parser');
@@ -10,8 +9,8 @@ const PORT=3000;
 const HOST='0.0.0.0';
 
 app.use(cors());
-app.use(bodyParser.json());
-app.use(bodyParser.urlencoded({extended:true}));
+app.use(express.json());
+app.use(express.urlencoded({extended:true}));
 app.use(express.static('.'));
 
 const WATER_LEVER_CSV=path.join(__dirname, 'data', 'water_level.csv');
@@ -19,7 +18,7 @@ const RESCUE_POINTS_CSV=path.join(__dirname, 'data', 'rescue_points.csv');
 const STAIONS_CSV=path.join(__dirname, 'data', 'stations.csv');
 
 if (!fs.existsSync(path.join(__dirname, 'data'))){
-    fs.mkdiSync(path.join(__dirname, 'data'));
+    fs.mkdirSync(path.join(__dirname, 'data'));
 }
 
 function initCsvFile(filePath, headers){
@@ -69,11 +68,11 @@ initCsvFile(RESCUE_POINTS_CSV,[
 function readCsv(filePath){
     return new Promise((resolve, reject)=>{
         const result=[];
-        if (!existSync(filePath)){
+        if (!fs.existsSync(filePath)){
             resolve([]);
             return;
         }
-        createReadStream(filePath)
+        fs.createReadStream(filePath)
         .pipe(csv())
         .on('data', (data)=>{
             const hasId=data.id && data.id.trim()!=='';
@@ -95,7 +94,7 @@ function writeCsv(filePath,data,headers){
         });
         csvWriter.writeRecords(data)
         .then(()=>resolve())
-        .cacth((error)=>reject(error));
+        .catch((error)=>reject(error));
     });
 }
 
@@ -135,7 +134,44 @@ app.get('/api/stations/:id', async (req,res)=> {
         }
 
         // mực nước hiện tại
-        const currenLevel=parseFloat(stationLevels[0].water_level);
+        const currentLevel=parseFloat(stationLevels[0].water_level);
+        
+        // tính tốc độ dâng (so sánh với mực nước trước đó)
+        let riseRate = null;
+        if (stationLevels.length >= 2) {
+            const prevLevel = parseFloat(stationLevels[1].water_level);
+            const currentTime = new Date(stationLevels[0].timestamp);
+            const prevTime = new Date(stationLevels[1].timestamp);
+            const hoursDiff = (currentTime - prevTime) / (1000 * 60 * 60);
+            if (hoursDiff > 0) {
+                riseRate = (currentLevel - prevLevel) / hoursDiff;
+            }
+        }
+        
+        // xác định mức độ ngập
+        const thresholdSafe = parseFloat(station.threshold_safe || 50);
+        const thresholdWarning = parseFloat(station.threshold_warning || 100);
+        const thresholdDanger = parseFloat(station.threshold_danger || 150);
+        
+        let floodLevel = 'unknown';
+        if (currentLevel < thresholdSafe) {
+            floodLevel = 'safe';
+        } else if (currentLevel < thresholdWarning) {
+            floodLevel = 'caution';
+        } else if (currentLevel < thresholdDanger) {
+            floodLevel = 'warning';
+        } else {
+            floodLevel = 'danger';
+        }
+        
+        res.json({
+            ...station,
+            current_water_level: currentLevel,
+            rise_rate: riseRate,
+            water_level_history: stationLevels.slice(0, 10),
+            flood_level: floodLevel,
+            last_update: stationLevels[0].timestamp
+        });
     }catch(error){
         res.status(500).json({error:error.message});
     }    
@@ -161,7 +197,7 @@ app.post('/api/stations', async(req,res)=>{
             threshold_warning:threshold_warning? parseFloat(threshold_warning).toFixed(2):'100.00',
             threshold_danger:threshold_danger? parseFloat(threshold_danger).toFixed(2):'150.00',
             status: 'active',
-            crated_at: new Date().toISOString()
+            created_at: new Date().toISOString()
         };
 
         stations.push(newStations);
@@ -221,9 +257,9 @@ app.post('/api/rescue-points', async (req,res)=>{
             lat: parseFloat(lat).toFixed(6),
             lng: parseFloat(lng).toFixed(6),
             timestamp: new Date().toISOString(),
-            phone: point.phone || '',
-            people_count: point.people_count ? parseInt(people_count).toString():'',
-            urgency:point.urgency || 'normal',
+            phone: phone || '',
+            people_count: people_count ? parseInt(people_count).toString():'',
+            urgency: urgency || 'normal',
             notes:notes || '',
             status: 'active',
             rescuedAt:''
@@ -271,7 +307,6 @@ app.put('/api/rescue-points/:id', async (req,res)=>{
             data[pointIndex].notes=notes;
         }
 
-        data.push(newPoint);
         await writeCsv(RESCUE_POINTS_CSV, data,[
                 {id:'id', title:'id'},
                 {id:'lat', title:'lat'},
@@ -297,12 +332,12 @@ app.delete('/api/rescue-points/:id', async (req,res)=>{
     try{
         const {id}=req.params;
         const data=await readCsv(RESCUE_POINTS_CSV);
-        const filtered=data.filter(p=>p.id===id);
+        const filtered=data.filter(p=>p.id!==id);
 
         if (filtered.length===data.length){
             return res.status(404).json({error:'Không tìm thấy điểm'});
         }
-        await writeCsv(RESCUE_POINTS_CSV, data,[
+        await writeCsv(RESCUE_POINTS_CSV, filtered,[
                 {id:'id', title:'id'},
                 {id:'lat', title:'lat'},
                 {id:'lng', title:'lng'},
