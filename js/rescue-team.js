@@ -1,11 +1,9 @@
 const DN_center=[16.0544, 108.2022];
 const map= L.map("map", {
-    center: DN_center,
     zoomControl: true,
     minZoom: 10,
-    maxZoom: 18,
-    }
-);
+    maxZoom: 18
+}).setView(DN_center, 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     maxZoom: 19
@@ -48,7 +46,7 @@ async function danhDauDaCuu(id) {
             headers:{
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({status:'recused'})
+            body: JSON.stringify({status:'rescued'})
         });
         if(!response.ok) throw new Error('Lỗi khi cập nhật');
         return await response.json();
@@ -84,8 +82,8 @@ async function xoaAll() {
     try{
         const points=await laydiemSOS();
       // Xóa từng điểm đã cứu
-        const recusedPoints=points.filter(p=>p.status==='recused');
-        for (const point of recusedPoints){
+        const rescuedPoints=points.filter(p=>p.status==='rescued');
+        for (const point of rescuedPoints){
             await xoaDiemSOS(point.id);
         }
         return true;
@@ -95,15 +93,17 @@ async function xoaAll() {
     }
 }
 let allDiem=[];
+let allRescuePoints=[];
 // Hiển thị các điểm cần cứu
 async function hienThiDiemSOS() {
     try{
         rescueMarkersLayer.clearLayers();
         const points=await laydiemSOS();
         allDiem=points;
+        allRescuePoints=points;
         points.sort((a, b)=>{
-            if (a.status==='recused' && b.status!=='recused') return 1;
-            if (b.status==='recused' && a.status!=='recused') return -1;
+            if (a.status==='rescued' && b.status!=='rescued') return 1;
+            if (b.status==='rescued' && a.status!=='rescued') return -1;
 
             const urgencyOder={'critical':3, 'urgent':2, 'normal':1};
             const aUrgency=urgencyOder[a.urgency]||1;
@@ -113,7 +113,7 @@ async function hienThiDiemSOS() {
             return new Date(b.timestamp)-new Date(a.timestamp);
         });
         points.forEach(point => {
-        const isRecused=point.status==='recused';
+        const isRecused=point.status==='rescued';
 
         let markerColor ='#95a5a6';
         if (!isRecused){
@@ -162,16 +162,16 @@ async function hienThiDiemSOS() {
         
         const popupContent = `
         <div style="min-width: 250px;">
-          <b>${isRescued ? '✓ Đã được cứu' : '🚨 Cần cứu hộ'}</b><br/>
+          <b>${isRecused ? '✓ Đã được cứu' : '🚨 Cần cứu hộ'}</b><br/>
           <hr style="margin: 8px 0; border-color: #ddd;"/>
           ${point.phone ? `<strong>📞 SĐT:</strong> ${point.phone}<br/>` : ''}
           ${point.people_count ? `<strong>👥 Số người:</strong> ${point.people_count}<br/>` : ''}
           <strong>⚠️ Mức độ:</strong> ${urgencyText}<br/>
           <strong>🕐 Thời gian:</strong> ${new Date(point.timestamp).toLocaleString('vi-VN')}<br/>
           ${point.notes ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>📝 Ghi chú:</strong><br/>${point.notes}<br/>` : ''}
-          ${isRescued && point.rescuedAt ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>✓ Đã cứu lúc:</strong> ${new Date(point.rescuedAt).toLocaleString('vi-VN')}<br/>` : ''}
+          ${isRecused && point.rescuedAt ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>✓ Đã cứu lúc:</strong> ${new Date(point.rescuedAt).toLocaleString('vi-VN')}<br/>` : ''}
           <div style="margin-top: 12px;">
-            ${!isRescued ? `<button onclick="markAsRescued('${point.id}')" style="
+            ${!isRecused ? `<button onclick="markAsRescued('${point.id}')" style="
               background: #2ecc71;
               color: white;
               border: none;
@@ -197,7 +197,6 @@ async function hienThiDiemSOS() {
         marker.bindPopup(popupContent);
         marker.addTo(rescueMarkersLayer);
         });
-        capNhatSOS();
         capNhatSlSOS();
     }catch(error){
         console.error('Error loading rescue points:', error);
@@ -347,13 +346,13 @@ async function loadStations() {
     const stations =await getStations();
 
     for (const station of stations){
-        const detals= await notiSta(station.id);
+        const details= await notiSta(station.id);
     let color = '#95a5a6';
-    let floodLevel='unknow';
+    let floodLevel='unknown';
     let waterLevel=null;
-    if (detals){
-        floodLevel=detals.flood_level || 'unknow';
-        waterLevel=detals.current_water_lever;
+    if (details){
+        floodLevel=details.flood_level || 'unknown';
+        waterLevel=details.current_water_level;
         switch (floodLevel){
             case 'safe':
                 color='#2ecc71';
@@ -444,17 +443,17 @@ async function loadStations() {
 }
 // Cập nhật danh sách trạm
 async function capnhatDsTram(stations) {
-    const sationsListDiv = document.getElementById('station-list');
-    if (!sationsListDiv) return;
+    const stationsListDiv = document.getElementById('stations-list');
+    if (!stationsListDiv) return;
     if (stations.length===0){
-        sationsListDiv.innerHTML= '<div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Chưa có trạm nào</div>';
+        stationsListDiv.innerHTML= '<div style="color: #95a5a6; font-size: 12px; text-align: center; padding: 8px;">Chưa có trạm nào</div>';
         return;
     }
     let html='';
     for (const station of stations){
-        const detals=await notiSta(station.id);
-        const floodLevel=detals?.flood_level || 'unknown';
-        const waterLevel = detals?.current_water_lever;
+        const details=await notiSta(station.id);
+        const floodLevel=details?.flood_level || 'unknown';
+        const waterLevel = details?.current_water_level;
         const floodLevelText={
             'safe': '🟢 An toàn',
           'caution': '🟡 Cảnh báo nhẹ',
@@ -487,7 +486,7 @@ async function capnhatDsTram(stations) {
         </div>
       `;
         }
-    sationsListDiv.innerHTML=html;
+    stationsListDiv.innerHTML=html;
     }
 
     window.focusOnStation=function(stationId){
