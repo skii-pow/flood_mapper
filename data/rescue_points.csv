@@ -1,1 +1,3 @@
-id,lat,lng,timestamp,phone,people_count,urgency,notes,status,rescuedAt
+id,lat,lng,timestamp,phone,people_count,urgency,status,notes,rescuedAt
+1771924050676,16.059056,108.206104,2026-02-24T09:07:30.676Z,0334726475,2,urgent,rescued,sfsd,
+1771924244618,16.049150,108.210054,2026-02-24T09:10:44.618Z,0334726475,3,critical,rescued,23e32,

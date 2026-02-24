@@ -197,6 +197,7 @@ async function hienThiDiemSOS() {
         marker.bindPopup(popupContent);
         marker.addTo(rescueMarkersLayer);
         });
+        capnhatDsCanSOS();
         capNhatSlSOS();
     }catch(error){
         console.error('Error loading rescue points:', error);
@@ -525,6 +526,7 @@ async function capnhatDsTram(stations) {
       try{
         await danhDauDaCuu(id);
         await hienThiDiemSOS();
+        map.closePopup();
       }catch (error){
         alert('Không thể đánh dấu đã cứu. Vui lòng thử lại.')
       }
