@@ -49,6 +49,7 @@ initCsvFile(WATER_LEVER_CSV,[
     {id:'id', title:'id'},
     {id:'station_id', title:'station_id'},
     {id:'water_level', title:'water_level'},
+    {id:'timestamp', title:'timestamp'},
     {id:'status', title:'status'},
 ]);
 
@@ -104,6 +105,47 @@ app.get('/api/stations', async(req,res)=>{
         res.json(stations);
     }catch(error){
         res.status(500).json({error: error.message});
+    }
+});
+
+// lấy tóm tắt tất cả trạm (water level + flood_level) trong 1 request
+// phải đặt TRƯỚC route /api/stations/:id để tránh "summary" bị parse thành id
+app.get('/api/stations/summary', async (req, res) => {
+    try {
+        const stations   = await readCsv(STAIONS_CSV);
+        const waterLevels = await readCsv(WATER_LEVER_CSV);
+
+        const summary = stations.map(station => {
+            const levels = waterLevels
+                .filter(w => w.station_id === station.id)
+                .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            if (levels.length === 0) {
+                return { id: station.id, current_water_level: null, flood_level: 'unknown', last_update: null };
+            }
+
+            const currentLevel = parseFloat(levels[0].water_level);
+            const safe    = parseFloat(station.threshold_safe    || 50);
+            const warning = parseFloat(station.threshold_warning || 100);
+            const danger  = parseFloat(station.threshold_danger  || 150);
+
+            let floodLevel = 'unknown';
+            if      (currentLevel < safe)    floodLevel = 'safe';
+            else if (currentLevel < warning) floodLevel = 'caution';
+            else if (currentLevel < danger)  floodLevel = 'warning';
+            else                             floodLevel = 'danger';
+
+            return {
+                id:                   station.id,
+                current_water_level:  currentLevel,
+                flood_level:          floodLevel,
+                last_update:          levels[0].timestamp
+            };
+        });
+
+        res.json(summary);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -175,6 +217,67 @@ app.get('/api/stations/:id', async (req,res)=> {
     }catch(error){
         res.status(500).json({error:error.message});
     }    
+});
+
+// nhận dữ liệu mực nước từ cảm biến
+app.post('/api/water-level', async (req, res) => {
+    try {
+        const { station_id, water_level, timestamp } = req.body;
+
+        if (station_id === undefined || water_level === undefined) {
+            return res.status(400).json({ error: 'Thiếu station_id hoặc water_level' });
+        }
+
+        const level = parseFloat(water_level);
+        if (isNaN(level)) {
+            return res.status(400).json({ error: 'water_level không hợp lệ' });
+        }
+
+        // tính trạng thái dựa trên ngưỡng của trạm
+        const stations = await readCsv(STAIONS_CSV);
+        const station = stations.find(s => s.id === station_id.toString());
+        let status = 'unknown';
+        if (station) {
+            const thresholdSafe    = parseFloat(station.threshold_safe    || 50);
+            const thresholdWarning = parseFloat(station.threshold_warning || 100);
+            const thresholdDanger  = parseFloat(station.threshold_danger  || 150);
+            if      (level < thresholdSafe)    status = 'safe';
+            else if (level < thresholdWarning) status = 'caution';
+            else if (level < thresholdDanger)  status = 'warning';
+            else                               status = 'danger';
+        }
+
+        const records = await readCsv(WATER_LEVER_CSV);
+
+        // giữ tối đa 500 bản ghi mỗi trạm để tránh CSV phình to
+        const MAX_PER_STATION = 500;
+        const others  = records.filter(r => r.station_id !== station_id.toString());
+        const thisStation = records
+            .filter(r => r.station_id === station_id.toString())
+            .slice(-(MAX_PER_STATION - 1));   // giữ N-1 cũ, sẽ thêm 1 mới
+
+        const newRecord = {
+            id:          Date.now().toString(),
+            station_id:  station_id.toString(),
+            water_level: level.toFixed(2),
+            timestamp:   timestamp || new Date().toISOString(),
+            status
+        };
+
+        const allRecords = [...others, ...thisStation, newRecord];
+
+        await writeCsv(WATER_LEVER_CSV, allRecords, [
+            { id: 'id',          title: 'id' },
+            { id: 'station_id',  title: 'station_id' },
+            { id: 'water_level', title: 'water_level' },
+            { id: 'timestamp',   title: 'timestamp' },
+            { id: 'status',      title: 'status' },
+        ]);
+
+        res.json({ success: true, data: newRecord });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // tạo trạm mới

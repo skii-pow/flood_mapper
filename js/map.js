@@ -340,13 +340,24 @@ async function capnhatDsSOS(stations) {
         }
     }, 2000);
 
-    setInterval (async function () {
-        try{
-            capNhatSOS();
-        } catch(error){
-            console.error('Lỗi khi cập nhật trạm:', error);
+    let lastStationHash = '';
+    setInterval(async function () {
+        try {
+            const res     = await fetch(`${API_BASE_URL}/api/stations/summary`);
+            const summary = await res.json();
+            const hash    = JSON.stringify(summary.map(s => ({
+                id:    s.id,
+                level: s.current_water_level,
+                ts:    s.last_update
+            })));
+            if (hash !== lastStationHash) {
+                lastStationHash = hash;
+                await loadStations();
+            }
+        } catch (error) {
+            console.error('Lỗi khi kiểm tra cập nhật trạm:', error);
         }
-    }, 10000);
+    }, 3000);
 
     window.toggleRescueMode= function(){
         isRecuseMode=!isRecuseMode;
