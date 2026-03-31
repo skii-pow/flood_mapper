@@ -97,13 +97,14 @@ flood_mapper/
 
 ## 🔌 API Endpoints
 
-### Trạm đo mực nước
+---
+
+### 📡 Trạm đo mực nước
 
 #### Lấy danh sách tất cả trạm
 ```http
 GET /api/stations
 ```
-
 **Response:**
 ```json
 [
@@ -112,84 +113,231 @@ GET /api/stations
     "name": "Trạm Cầu Rồng",
     "location_lat": "16.060553",
     "location_lng": "108.227380",
-    "threshold_safe": "50.00",
-    "threshold_warning": "100.00",
-    "threshold_danger": "150.00",
-    "status": "active"
+    "threshold_safe": "100.00",
+    "threshold_warning": "200.00",
+    "threshold_danger": "300.00",
+    "status": "active",
+    "create_at": "2026-02-09T00:00:00.000Z"
   }
 ]
 ```
+
+---
+
+#### Lấy tóm tắt trạng thái tất cả trạm *(dùng cho polling frontend)*
+```http
+GET /api/stations/summary
+```
+Trả về mực nước hiện tại và mức độ ngập của tất cả trạm trong một request duy nhất.
+
+**Response:**
+```json
+[
+  {
+    "id": "1",
+    "current_water_level": 250.00,
+    "flood_level": "warning",
+    "last_update": "2026-03-31T10:00:00.000Z"
+  }
+]
+```
+
+**`flood_level` values:**
+
+| Giá trị | Ý nghĩa |
+|---|---|
+| `safe` | Dưới ngưỡng an toàn |
+| `caution` | Vượt ngưỡng an toàn |
+| `warning` | Vượt ngưỡng cảnh báo |
+| `danger` | Vượt ngưỡng nguy hiểm |
+| `unknown` | Chưa có dữ liệu |
+
+---
 
 #### Lấy chi tiết trạm
 ```http
 GET /api/stations/:id
 ```
-
 **Response:**
 ```json
 {
   "id": "1",
   "name": "Trạm Cầu Rồng",
-  "current_water_level": 130,
-  "rise_rate": 2,
-  "flood_level": "danger",
-  "water_level_history": [...]
+  "location_lat": "16.060553",
+  "location_lng": "108.227380",
+  "threshold_safe": "100.00",
+  "threshold_warning": "200.00",
+  "threshold_danger": "300.00",
+  "status": "active",
+  "current_water_level": 250.00,
+  "rise_rate": 5.2,
+  "flood_level": "warning",
+  "last_update": "2026-03-31T10:00:00.000Z",
+  "water_level_history": [
+    { "id": "...", "station_id": "1", "water_level": "250.00", "timestamp": "...", "status": "warning" }
+  ]
 }
 ```
+> `water_level_history` trả về tối đa 10 bản ghi gần nhất.  
+> `rise_rate` đơn vị là cm/giờ, `null` nếu chỉ có 1 bản ghi.
+
+---
 
 #### Tạo trạm mới
 ```http
 POST /api/stations
 Content-Type: application/json
-
+```
+**Request body:**
+```json
 {
   "name": "Tên trạm",
   "location_lat": 16.0544,
   "location_lng": 108.2022,
-  "threshold_safe": 50,
-  "threshold_warning": 100,
-  "threshold_danger": 150
+  "threshold_safe": 100,
+  "threshold_warning": 200,
+  "threshold_danger": 300
+}
+```
+> `threshold_safe`, `threshold_warning`, `threshold_danger` là tuỳ chọn, mặc định `50 / 100 / 150`.
+
+**Response:**
+```json
+{ "success": true, "data": { "id": "...", "name": "Tên trạm", ... } }
+```
+
+---
+
+### 🌊 Mực nước cảm biến
+
+#### Nhận dữ liệu mực nước từ ESP32/sensor
+```http
+POST /api/water-level
+Content-Type: application/json
+```
+**Request body:**
+```json
+{
+  "station_id": "1",
+  "water_level": 250.00,
+  "timestamp": "2026-03-31T10:00:00.000Z"
+}
+```
+> `timestamp` là tuỳ chọn; nếu bỏ qua, server tự dùng thời gian hiện tại.  
+> Mỗi trạm chỉ giữ tối đa **500 bản ghi** gần nhất.  
+> `water_level` nên được nhân với hệ số tỉ lệ mô hình trước khi gửi (ví dụ: 1:100 → nhân 100).
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "id": "...",
+    "station_id": "1",
+    "water_level": "250.00",
+    "timestamp": "2026-03-31T10:00:00.000Z",
+    "status": "warning"
+  }
 }
 ```
 
-### Điểm cần cứu hộ
+---
+
+### 🚨 Điểm cần cứu hộ
 
 #### Lấy tất cả điểm cần cứu hộ
 ```http
 GET /api/rescue-points
 ```
+**Response:**
+```json
+[
+  {
+    "id": "...",
+    "lat": "16.059056",
+    "lng": "108.206104",
+    "timestamp": "2026-03-31T10:00:00.000Z",
+    "phone": "0987654321",
+    "people_count": "3",
+    "urgency": "critical",
+    "type": "flood",
+    "notes": "Cần hỗ trợ gấp",
+    "status": "active",
+    "rescuedAt": ""
+  }
+]
+```
+
+---
 
 #### Thêm điểm cần cứu hộ
 ```http
 POST /api/rescue-points
 Content-Type: application/json
-
+```
+**Request body:**
+```json
 {
   "lat": 16.0544,
   "lng": 108.2022,
   "phone": "0123456789",
   "people_count": 5,
   "urgency": "critical",
+  "type": "fire",
   "notes": "Mô tả tình huống"
 }
 ```
 
-**Urgency levels:** `normal`, `urgent`, `critical`
+| Trường | Bắt buộc | Mô tả |
+|---|---|---|
+| `lat`, `lng` | ✅ | Toạ độ vị trí |
+| `urgency` | | `normal` / `urgent` / `critical` (mặc định `normal`) |
+| `type` | | `flood` / `fire` (mặc định `flood`) |
+| `phone` | | Số điện thoại liên hệ |
+| `people_count` | | Số người cần cứu |
+| `notes` | | Ghi chú thêm |
+
+> **Chống trùng lặp:** Nếu đã có điểm cùng `type` chưa được cứu trong bán kính ~11m, server trả về điểm đó thay vì tạo mới, kèm `"duplicate": true`.
+
+**Response (mới):**
+```json
+{ "success": true, "data": { "id": "...", "type": "fire", "status": "active", ... } }
+```
+**Response (trùng lặp):**
+```json
+{ "success": true, "duplicate": true, "data": { "id": "...", ... } }
+```
+
+---
 
 #### Cập nhật trạng thái điểm cứu hộ
 ```http
 PUT /api/rescue-points/:id
 Content-Type: application/json
-
+```
+**Request body:**
+```json
 {
-  "status": "rescued",
-  "notes": "Đã cứu thành công"
+  "status": "rescue",
+  "notes": "Đã tiếp cận hiện trường"
 }
 ```
+> Khi `status = "rescue"`, trường `rescuedAt` được tự động ghi nhận thời gian.
+
+**Response:**
+```json
+{ "success": true, "data": { "id": "...", "status": "rescue", "rescuedAt": "2026-03-31T10:05:00.000Z", ... } }
+```
+
+---
 
 #### Xóa điểm cứu hộ
 ```http
 DELETE /api/rescue-points/:id
+```
+**Response:**
+```json
+{ "success": true }
 ```
 
 ---
@@ -216,8 +364,8 @@ DELETE /api/rescue-points/:id
 - Đội cứu hộ có thể xem và đánh dấu đã cứu
 
 ### 4. Cập nhật Thời gian Thực
-- Tự động làm mới dữ liệu mỗi 2 giây (điểm cứu hộ)
-- Cập nhật trạng thái trạm đo mỗi 10 giây
+- Poll `GET /api/stations/summary` mỗi **3 giây**; chỉ re-render bản đồ khi dữ liệu thực sự thay đổi (hash-based polling)
+- Dữ liệu mực nước từ ESP32 được đẩy lên server mỗi **2 giây** (khi có nước) hoặc **1 phút** (khi khô)
 
 ---
 
@@ -355,7 +503,7 @@ curl http://localhost:3000/api/stations/1
 # Test rescue points
 curl http://localhost:3000/api/rescue-points
 
-# Test thêm rescue point
+# Test thêm rescue point (lũ lụt)
 curl -X POST http://localhost:3000/api/rescue-points \
   -H "Content-Type: application/json" \
   -d '{
@@ -364,8 +512,28 @@ curl -X POST http://localhost:3000/api/rescue-points \
     "phone": "0123456789",
     "people_count": 3,
     "urgency": "urgent",
+    "type": "flood",
     "notes": "Cần hỗ trợ gấp"
   }'
+
+# Test thêm rescue point (hỏa hoạn - từ cảm biến lửa)
+curl -X POST http://localhost:3000/api/rescue-points \
+  -H "Content-Type: application/json" \
+  -d '{
+    "lat": 16.060553,
+    "lng": 108.227380,
+    "urgency": "critical",
+    "type": "fire",
+    "notes": "Phat hien hoa hoan tu dong boi cam bien lua - Tram 1"
+  }'
+
+# Test stations summary
+curl http://localhost:3000/api/stations/summary
+
+# Test gửi mực nước từ sensor
+curl -X POST http://localhost:3000/api/water-level \
+  -H "Content-Type: application/json" \
+  -d '{"station_id": "1", "water_level": 250.00}'
 ```
 
 ### Test Frontend
