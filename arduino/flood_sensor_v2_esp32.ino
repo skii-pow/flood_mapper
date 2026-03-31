@@ -18,7 +18,12 @@
 //    • Loop (DRY)                 → refine via EMA
 //    • Loop (LIKELY / CONFIRMED)  → waterHeight = sensorHeight - distance
 //
-//  WiFi enabled — POSTs waterHeight to server on LIKELY / CONFIRMED.
+//  POST sequence:
+//    • Startup (dry)    → POST once with water_level = 0
+//    • Dry              → POST every 1 minute (keep-alive)
+//    • Wet              → POST every 2 seconds
+//    • Wet → Dry        → POST once immediately (water_level = 0),
+//                         then resume 1-minute interval
 // ============================================================
 
 #include <WiFi.h>
@@ -48,6 +53,11 @@ const int ECHO_PIN = 18;  // D18 — Echo (via 1kΩ/2kΩ voltage divider)
 // Buzzer
 const int BELL_PIN = 25;  // D25 — active buzzer
 
+// Flood indicator LEDs
+const int GREEN_LED_PIN  = 26;  // D26 — green  (≥ 1 cm, safe)
+const int YELLOW_LED_PIN = 27;  // D27 — yellow (≥ 2 cm, warning)
+const int RED_LED_PIN    = 14;  // D14 — red    (≥ 3 cm, danger)
+
 // ---------- Sound speed ----------
 #define SOUND_SPEED  0.034      // cm per microsecond
 #define CM_TO_INCH   0.393701
@@ -68,7 +78,11 @@ const int   CALIBRATION_SAMPLES   = 10;
 const float EMA_ALPHA             = 0.05;
 const float DEFAULT_SENSOR_HEIGHT = 200.0;
 
-const unsigned long POST_INTERVAL = 2000;  // ms between server POSTs
+const unsigned long POST_INTERVAL_WET = 2000;   // 2s  — while water is detected
+const unsigned long POST_INTERVAL_DRY = 60000;  // 60s — keep-alive while dry
+
+// Scale factor: physical model is 1:100 (1 cm measured = 100 cm reported to server)
+const float SCALE_RATIO = 100.0;
 
 // ---------- Water state ----------
 enum WaterState { DRY, LIKELY, CONFIRMED };
@@ -110,6 +124,36 @@ float measureDistance() {
     long  duration   = pulseIn(ECHO_PIN, HIGH);
     float distanceCm = duration * SOUND_SPEED / 2;
     return distanceCm;
+}
+
+// ---------------------------------------------------------------
+// Drive LEDs and buzzer based on measured water height (model scale).
+//   ≥ 3 cm → red LED + buzzer  (danger)
+//   ≥ 2 cm → yellow LED        (warning)
+//   ≥ 1 cm → green LED         (safe — water present but low)
+//   < 1 cm → all off           (dry)
+void updateIndicators(float waterHeight) {
+    if (waterHeight >= 3.0) {
+        digitalWrite(GREEN_LED_PIN,  LOW);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN,    HIGH);
+        digitalWrite(BELL_PIN,       HIGH);
+    } else if (waterHeight >= 2.0) {
+        digitalWrite(GREEN_LED_PIN,  LOW);
+        digitalWrite(YELLOW_LED_PIN, HIGH);
+        digitalWrite(RED_LED_PIN,    LOW);
+        digitalWrite(BELL_PIN,       LOW);
+    } else if (waterHeight >= 1.0) {
+        digitalWrite(GREEN_LED_PIN,  HIGH);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN,    LOW);
+        digitalWrite(BELL_PIN,       LOW);
+    } else {
+        digitalWrite(GREEN_LED_PIN,  LOW);
+        digitalWrite(YELLOW_LED_PIN, LOW);
+        digitalWrite(RED_LED_PIN,    LOW);
+        digitalWrite(BELL_PIN,       LOW);
+    }
 }
 
 // ---------------------------------------------------------------
@@ -158,11 +202,19 @@ void setup() {
     // Required for accurate full-range ADC (0–3.9V → 0–4095)
     analogSetAttenuation(ADC_11db);
 
-    pinMode(POWER_PIN, OUTPUT);
+    pinMode(POWER_PIN,    OUTPUT);
     digitalWrite(POWER_PIN, LOW);   // sensor off by default
-    pinMode(TRIG_PIN,  OUTPUT);
-    pinMode(ECHO_PIN,  INPUT);
-    pinMode(BELL_PIN,  OUTPUT);
+    pinMode(TRIG_PIN,     OUTPUT);
+    pinMode(ECHO_PIN,     INPUT);
+    pinMode(BELL_PIN,     OUTPUT);
+    pinMode(GREEN_LED_PIN,  OUTPUT);
+    pinMode(YELLOW_LED_PIN, OUTPUT);
+    pinMode(RED_LED_PIN,    OUTPUT);
+    // All indicators off at boot
+    digitalWrite(BELL_PIN,       LOW);
+    digitalWrite(GREEN_LED_PIN,  LOW);
+    digitalWrite(YELLOW_LED_PIN, LOW);
+    digitalWrite(RED_LED_PIN,    LOW);
     // SIGNAL_PIN (VP / GPIO 36) is input-only — no pinMode needed
 
     connectWiFi();
@@ -181,6 +233,7 @@ void setup() {
         Serial.print("Dung gia tri mac dinh: ");
         Serial.print(sensorHeight, 2);
         Serial.println(" cm");
+        // Loop will handle the first wet POST
     } else {
         Serial.println("Dang calibrate chieu cao kenh...");
         float sum = 0.0;
@@ -192,6 +245,11 @@ void setup() {
         Serial.print("Calibration hoan tat. CHIEU CAO KENH: ");
         Serial.print(sensorHeight, 2);
         Serial.println(" cm");
+
+        // POST once on startup to register the station as online and dry
+        Serial.println("Startup POST: kho rao, muc nuoc = 0...");
+        postWaterLevel(0, DRY);
+        lastPostTime = millis();
     }
 }
 
@@ -220,28 +278,30 @@ void loop() {
         state = DRY;
     }
 
+    // Update LEDs and buzzer for current water height (model scale)
+    updateIndicators((state == DRY) ? 0 : waterHeight);
+
     if (state == CONFIRMED || state == LIKELY) {
         // ── Both sensors agree: water present ────────────────
-        digitalWrite(BELL_PIN, HIGH);
-
         Serial.print("TRANG THAI: co nuoc");
         Serial.print(state == CONFIRMED ? " [XAC NHAN]" : " [CO THE]");
         Serial.print(" - TRAM: ");
         Serial.print(STATION_ID);
-        Serial.print(" - MUC NUOC: ");
+        Serial.print(" - MUC NUOC (mo hinh): ");
         Serial.print(waterHeight, 2);
+        Serial.print(" cm | (thuc te x100): ");
+        Serial.print(waterHeight * SCALE_RATIO, 1);
         Serial.println(" cm");
 
-        // POST periodically while wet
+        // POST every 2s while wet (scaled value sent to server)
         unsigned long now = millis();
-        if (now - lastPostTime >= POST_INTERVAL) {
-            postWaterLevel(waterHeight, state);
+        if (now - lastPostTime >= POST_INTERVAL_WET) {
+            postWaterLevel(waterHeight * SCALE_RATIO, state);
             lastPostTime = now;
         }
 
     } else {
         // ── DRY ──────────────────────────────────────────────
-        digitalWrite(BELL_PIN, LOW);
         sensorHeight = (EMA_ALPHA * distanceCm) + ((1.0 - EMA_ALPHA) * sensorHeight);
 
         Serial.print("TRANG THAI: kho rao");
@@ -254,11 +314,17 @@ void loop() {
         Serial.print(sensorHeight, 2);
         Serial.println(" cm");
 
-        // POST once when transitioning wet → dry (waterHeight = 0)
+        unsigned long now = millis();
         if (lastState != DRY) {
-            Serial.println("  [CHUYEN TRANG THAI: nuoc → kho] POST lan cuoi...");
+            // Wet → Dry transition: POST immediately with water_level = 0
+            Serial.println("  [CHUYEN TRANG THAI: nuoc → kho] POST ngay...");
             postWaterLevel(0, DRY);
-            lastPostTime = millis();
+            lastPostTime = now;
+        } else if (now - lastPostTime >= POST_INTERVAL_DRY) {
+            // Continuing dry: keep-alive POST every 1 minute
+            Serial.println("  [KHO RAO - KEEP ALIVE] POST dinh ky 1 phut...");
+            postWaterLevel(0, DRY);
+            lastPostTime = now;
         }
     }
 
