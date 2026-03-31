@@ -94,24 +94,30 @@ async function hienThiDiemSOS() {
     rescueMarkersLayer.clearLayers();
     const points=await laydiemSOS();
     points.forEach(point => {
-    const isRecused=point.status==='rescued';
+    const isRecused = point.status === 'rescued';
+    const isFire    = point.type === 'fire';
+
+    const markerBg  = isRecused ? '#95a5a6' : (isFire ? '#e67e22' : '#e74c3c');
+    const markerGlow= isRecused ? 'rgba(149,165,166,0.8)' : (isFire ? 'rgba(230,126,34,0.8)' : 'rgba(231,76,60,0.8)');
+    const markerIcon= isRecused ? '✓' : (isFire ? '🔥' : '!');
+
     const icon = L.divIcon({
         className: 'rescue-marker',
         html: `
           <div style="
-            background: ${isRecused ? '#95a5a6' : '#e74c3c'};
+            background: ${markerBg};
             width: 30px;
             height: 30px;
             border-radius: 50%;
             border: 3px solid white;
-            box-shadow: 0 0 15px ${isRecused ? 'rgba(149,165,166,0.8)' : 'rgba(231,76,60,0.8)'};
+            box-shadow: 0 0 15px ${markerGlow};
             display: flex;
             align-items: center;
             justify-content: center;
             font-weight: bold;
             color: white;
-            font-size: 18px;
-          ">${isRecused ? '✓' : '!'}</div>
+            font-size: ${isFire ? '16px' : '18px'};
+          ">${markerIcon}</div>
         `,
         iconSize: [30, 30],
         iconAnchor: [15, 15]
@@ -122,18 +128,20 @@ async function hienThiDiemSOS() {
         'urgent': '🟡 Khẩn cấp',
         'critical': '🔴 Rất khẩn cấp'
       }[point.urgency] || '🟢 Bình thường';
-      
+      const typeLabel = isFire ? '🔥 Hỏa hoạn' : '🌊 Lũ lụt';
+
       const popupContent = `
         <div style="min-width: 250px;">
-          <b>${isRecused ? '✓ Đã được cứu' : '🚨 Cần cứu hộ'}</b><br/>
+          <b>${isRecused ? '✓ Đã được cứu' : (isFire ? '🔥 Phát hiện hỏa hoạn!' : '🚨 Cần cứu hộ')}</b><br/>
           <hr style="margin: 8px 0; border-color: #ddd;"/>
+          <strong>📋 Loại:</strong> ${typeLabel}<br/>
           ${point.phone ? `<strong>📞 SĐT:</strong> ${point.phone}<br/>` : ''}
           ${point.people_count ? `<strong>👥 Số người:</strong> ${point.people_count}<br/>` : ''}
           <strong>⚠️ Mức độ:</strong> ${urgencyText}<br/>
           <strong>🕐 Thời gian:</strong> ${new Date(point.timestamp).toLocaleString('vi-VN')}<br/>
           ${point.notes ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>📝 Ghi chú:</strong><br/>${point.notes}<br/>` : ''}
-          ${isRecused && point.recusedAt ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>✓ Đã cứu lúc:</strong> ${new Date(point.rescuedAt).toLocaleString('vi-VN')}<br/>` : ''}
-          ${!isRecused ? '<div style="margin-top: 8px; color: #e74c3c; font-size: 12px;">Chỉ đội cứu hộ mới có thể đánh dấu đã cứu</div>' : ''}
+          ${isRecused && point.rescuedAt ? `<hr style="margin: 8px 0; border-color: #ddd;"/><strong>✓ Đã cứu lúc:</strong> ${new Date(point.rescuedAt).toLocaleString('vi-VN')}<br/>` : ''}
+          ${!isRecused ? `<div style="margin-top: 8px; color: ${isFire ? '#e67e22' : '#e74c3c'}; font-size: 12px;">Chỉ đội cứu hộ mới có thể đánh dấu đã cứu</div>` : ''}
         </div>
       `;
       

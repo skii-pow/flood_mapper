@@ -113,31 +113,32 @@ async function hienThiDiemSOS() {
             return new Date(b.timestamp)-new Date(a.timestamp);
         });
         points.forEach(point => {
-        const isRecused=point.status==='rescued';
+        const isRecused = point.status === 'rescued';
+        const isFire    = point.type === 'fire';
 
-        let markerColor ='#95a5a6';
-        if (!isRecused){
-            switch (point.urgency){
-                case 'critical':
-                    markerColor='#e74c3c';
-                    break;
-                case 'urgent':
-                    markerColor='#f1c40f'
-                    break;
-                case 'normal':
-                    markerColor='#2ecc71';
-                    break;
-                default:
-                    markerColor='#e74c3c';
+        let markerColor = '#95a5a6';
+        if (!isRecused) {
+            if (isFire) {
+                markerColor = '#e67e22';   // orange for fire, regardless of urgency
+            } else {
+                switch (point.urgency) {
+                    case 'critical': markerColor = '#e74c3c'; break;
+                    case 'urgent':   markerColor = '#f1c40f'; break;
+                    case 'normal':   markerColor = '#2ecc71'; break;
+                    default:         markerColor = '#e74c3c';
+                }
             }
         }
+        const markerSymbol = isRecused ? '✓' : (isFire ? '🔥' : '!');
+        const iconSize = isRecused ? 28 : 32;
+
         const icon = L.divIcon({
         className: 'rescue-marker',
         html: `
           <div style="
             background: ${markerColor};
-            width: ${isRecused ? '28' : '32'}px;
-            height: ${isRecused ? '28' : '32'}px;
+            width: ${iconSize}px;
+            height: ${iconSize}px;
             border-radius: 50%;
             border: 3px solid white;
             box-shadow: 0 0 15px ${markerColor}80;
@@ -146,11 +147,11 @@ async function hienThiDiemSOS() {
             justify-content: center;
             font-weight: bold;
             color: white;
-            font-size: ${isRecused ? '16' : '18'}px;
-          ">${isRecused ? '✓' : '!'}</div>
+            font-size: ${isRecused ? '16' : (isFire ? '14' : '18')}px;
+          ">${markerSymbol}</div>
         `,
-        iconSize: [isRecused ? 28 : 32, isRecused ? 28 : 32],
-        iconAnchor: [isRecused ? 14 : 16, isRecused ? 14 : 16]
+        iconSize: [iconSize, iconSize],
+        iconAnchor: [iconSize / 2, iconSize / 2]
       });
 
       const marker = L.marker([parseFloat(point.lat), parseFloat(point.lng)], { icon });
@@ -159,11 +160,13 @@ async function hienThiDiemSOS() {
             'urgent': '🟡 Khẩn cấp',
             'critical': '🔴 Rất khẩn cấp'
         }[point.urgency] || '🟢 Bình thường';
-        
+        const typeLabel = isFire ? '🔥 Hỏa hoạn' : '🌊 Lũ lụt';
+
         const popupContent = `
         <div style="min-width: 250px;">
-          <b>${isRecused ? '✓ Đã được cứu' : '🚨 Cần cứu hộ'}</b><br/>
+          <b>${isRecused ? '✓ Đã được cứu' : (isFire ? '🔥 Phát hiện hỏa hoạn!' : '🚨 Cần cứu hộ')}</b><br/>
           <hr style="margin: 8px 0; border-color: #ddd;"/>
+          <strong>📋 Loại:</strong> ${typeLabel}<br/>
           ${point.phone ? `<strong>📞 SĐT:</strong> ${point.phone}<br/>` : ''}
           ${point.people_count ? `<strong>👥 Số người:</strong> ${point.people_count}<br/>` : ''}
           <strong>⚠️ Mức độ:</strong> ${urgencyText}<br/>
@@ -277,37 +280,41 @@ function updateRescueCountWithFilter() {
 
     listDiv.innerHTML = filteredPoints.map(point => {
       const isRescued = point.status === 'rescued';
+      const isFire    = point.type === 'fire';
+
       const urgencyText = {
         'normal': '🟢',
         'urgent': '🟡',
         'critical': '🔴'
       }[point.urgency] || '🟢';
-      
-      const urgencyColor = {
+
+      const urgencyColor = isRescued ? '#95a5a6' : (isFire ? '#e67e22' : ({
         'normal': '#2ecc71',
         'urgent': '#f1c40f',
         'critical': '#e74c3c'
-      }[point.urgency] || '#95a5a6';
-      
+      }[point.urgency] || '#95a5a6'));
+
+      const statusLabel = isRescued ? '✓ Đã cứu' : (isFire ? '🔥 Hỏa hoạn' : '🚨 Cần cứu');
+      const typeLabel   = isFire ? '🔥 Hỏa hoạn' : '🌊 Lũ lụt';
+
       return `
         <div class="rescue-item ${isRescued ? 'rescued' : ''}" onclick="focusOnPoint('${point.id}')" style="
-          border-left-color: ${isRescued ? '#95a5a6' : urgencyColor};
+          border-left-color: ${urgencyColor};
         ">
           <div class="rescue-item-header">
-            <span class="status-badge ${isRescued ? 'status-rescued' : 'status-active'}">
-              ${isRescued ? '✓ Đã cứu' : '🚨 Cần cứu'}
+            <span class="status-badge ${isRescued ? 'status-rescued' : 'status-active'}" style="${isFire && !isRescued ? 'background:#e67e22;' : ''}">
+              ${statusLabel}
             </span>
             <span class="rescue-item-time">${new Date(point.timestamp).toLocaleString('vi-VN')}</span>
           </div>
           <div class="rescue-item-details" style="font-size: 12px; color: #95a5a6; margin-top: 4px;">
-            ${point.phone ? `<strong style="color: #ecf0f1;">📞</strong> ${point.phone}` : ''}
-            ${point.phone && point.people_count ? ' • ' : ''}
-            ${point.people_count ? `<strong style="color: #ecf0f1;">👥</strong> ${point.people_count} người` : ''}
-            ${(point.phone || point.people_count) ? ' • ' : ''}
-            <span style="color: ${urgencyColor};">${urgencyText}</span> 
+            <strong style="color: ${urgencyColor};">${typeLabel}</strong>
+            ${point.phone ? ` • <strong style="color: #ecf0f1;">📞</strong> ${point.phone}` : ''}
+            ${point.people_count ? ` • <strong style="color: #ecf0f1;">👥</strong> ${point.people_count} người` : ''}
+            ${!isFire ? ` • <span style="color: ${urgencyColor};">${urgencyText}</span>
             <span style="color: ${urgencyColor}; font-weight: 600;">
               ${point.urgency === 'normal' ? 'Bình thường' : point.urgency === 'urgent' ? 'Khẩn cấp' : 'Rất khẩn cấp'}
-            </span>
+            </span>` : ''}
           </div>
           ${point.notes ? `<div class="rescue-item-notes" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.1);">${point.notes}</div>` : ''}
         </div>

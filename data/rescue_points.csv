@@ -1,3 +1,5 @@
-id,lat,lng,timestamp,phone,people_count,urgency,status,notes,rescuedAt
-1771924050676,16.059056,108.206104,2026-02-24T09:07:30.676Z,0334726475,2,urgent,rescued,sfsd,
-1771924244618,16.049150,108.210054,2026-02-24T09:10:44.618Z,0334726475,3,critical,rescued,23e32,
+id,lat,lng,timestamp,phone,people_count,urgency,type,status,notes,rescuedAt
+1771924050676,16.059056,108.206104,2026-02-24T09:07:30.676Z,0334726475,2,urgent,flood,rescued,sfsd,
+1771924244618,16.049150,108.210054,2026-02-24T09:10:44.618Z,0334726475,3,critical,flood,rescued,23e32,
+1774963212077,16.070539,108.178936,2026-03-31T13:20:12.077Z,0987654321,6,normal,flood,active,,
+1774967794748,16.033657,108.221039,2026-03-31T14:36:34.748Z,,,critical,fire,active,Phat hien hoa hoan tu dong boi cam bien lua - Tram 1,

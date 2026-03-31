@@ -61,6 +61,7 @@ initCsvFile(RESCUE_POINTS_CSV,[
     {id:'phone', title:'phone'},
     {id:'people_count', title:'people_count'},
     {id:'urgency', title:'urgency'},
+    {id:'type', title:'type'},
     {id:'notes', title:'notes'},
     {id:'status', title:'status'},
     {id:'rescueAt', title:'rescueAt'},
@@ -343,7 +344,7 @@ app.get('/api/rescue-points', async(req, res)=>{
 // thêm điểm cần cứu hộ
 app.post('/api/rescue-points', async (req,res)=>{
     try{
-        const {lat, lng, phone, people_count,urgency, notes}=req.body;
+        const {lat, lng, phone, people_count, urgency, type, notes}=req.body;
 
         if (lat===undefined || lng===undefined){
             return res.status(400).json({error:'Thiếu tọa độ'});
@@ -355,6 +356,19 @@ app.post('/api/rescue-points', async (req,res)=>{
         
         const data= await readCsv(RESCUE_POINTS_CSV);
 
+        // Deduplicate: if an active point of the same type already exists within
+        // ~11 m (0.0001°) of the requested coordinates, return it without inserting.
+        const COORD_THRESHOLD = 0.0001;
+        const duplicate = data.find(p =>
+            p.status !== 'rescued' &&
+            (p.type || 'flood') === (type || 'flood') &&
+            Math.abs(parseFloat(p.lat) - parseFloat(lat)) < COORD_THRESHOLD &&
+            Math.abs(parseFloat(p.lng) - parseFloat(lng)) < COORD_THRESHOLD
+        );
+        if (duplicate) {
+            return res.json({ success: true, duplicate: true, data: duplicate });
+        }
+
         const newPoint={
             id: Date.now().toString(),
             lat: parseFloat(lat).toFixed(6),
@@ -363,7 +377,8 @@ app.post('/api/rescue-points', async (req,res)=>{
             phone: phone || '',
             people_count: people_count ? parseInt(people_count).toString():'',
             urgency: urgency || 'normal',
-            notes:notes || '',
+            type: type || 'flood',
+            notes: notes || '',
             status: 'active',
             rescuedAt:''
         };
@@ -377,6 +392,7 @@ app.post('/api/rescue-points', async (req,res)=>{
                 {id:'phone', title:'phone'},
                 {id:'people_count', title:'people_count'},
                 {id:'urgency', title:'urgency'},
+                {id:'type', title:'type'},
                 {id:'status', title:'status'},
                 {id:'notes', title:'notes'},
                 {id:'rescuedAt', title:'rescuedAt'}
@@ -418,6 +434,7 @@ app.put('/api/rescue-points/:id', async (req,res)=>{
                 {id:'phone', title:'phone'},
                 {id:'people_count', title:'people_count'},
                 {id:'urgency', title:'urgency'},
+                {id:'type', title:'type'},
                 {id:'status', title:'status'},
                 {id:'notes', title:'notes'},
                 {id:'rescuedAt', title:'rescuedAt'}
@@ -448,6 +465,7 @@ app.delete('/api/rescue-points/:id', async (req,res)=>{
                 {id:'phone', title:'phone'},
                 {id:'people_count', title:'people_count'},
                 {id:'urgency', title:'urgency'},
+                {id:'type', title:'type'},
                 {id:'status', title:'status'},
                 {id:'notes', title:'notes'},
                 {id:'rescuedAt', title:'rescuedAt'}

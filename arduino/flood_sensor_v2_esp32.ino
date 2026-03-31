@@ -13,10 +13,8 @@
 //    value > LIKELY_THRESHOLD    → LIKELY     (barely touching)
 //    value ≤ LIKELY_THRESHOLD    → DRY
 //
-//  sensorHeight auto-calibrates from dry readings:
-//    • Startup (DRY)              → average N ultrasonic readings
-//    • Loop (DRY)                 → refine via EMA
-//    • Loop (LIKELY / CONFIRMED)  → waterHeight = sensorHeight - distance
+//  sensorHeight is fixed at compile time (SENSOR_HEIGHT = 7.8 cm).
+//    waterHeight = SENSOR_HEIGHT − distance  (clamped to ≥ 0)
 //
 //  POST sequence:
 //    • Startup (dry)    → POST once with water_level = 0
@@ -30,13 +28,13 @@
 #include <HTTPClient.h>
 
 // ---------- WiFi credentials ----------
-const char* WIFI_SSID     = "Quynh Tram";
-const char* WIFI_PASSWORD = "hoang@123";
+const char* WIFI_SSID     = "Ton Phat";
+const char* WIFI_PASSWORD = "quagheghom";
 
 // ---------- Server ----------
 // Use your PC's LAN IP — NOT "localhost".
 // Find it with: ipconfig → IPv4 Address
-const char* SERVER_URL = "http://192.168.1.120:3000/api/water-level";
+const char* SERVER_URL = "http://172.20.10.2:3000/api/water-level";
 
 // ---------- Station ----------
 const int STATION_ID = 1;
@@ -74,9 +72,7 @@ const int LIKELY_THRESHOLD    = 700;   // value > 700 → LIKELY water
 const int CONFIRMED_THRESHOLD = 900;   // value > 900 → CONFIRMED water
 
 // ---------- General config ----------
-const int   CALIBRATION_SAMPLES   = 10;
-const float EMA_ALPHA             = 0.05;
-const float DEFAULT_SENSOR_HEIGHT = 200.0;
+const float SENSOR_HEIGHT = 7.8;  // fixed height from HC-SR04 to channel floor (cm)
 
 const unsigned long POST_INTERVAL_WET = 2000;   // 2s  — while water is detected
 const unsigned long POST_INTERVAL_DRY = 60000;  // 60s — keep-alive while dry
@@ -88,7 +84,7 @@ const float SCALE_RATIO = 100.0;
 enum WaterState { DRY, LIKELY, CONFIRMED };
 
 // ---------- Runtime state ----------
-float         sensorHeight = DEFAULT_SENSOR_HEIGHT;
+float         sensorHeight = SENSOR_HEIGHT;
 unsigned long lastPostTime = 0;
 WaterState    lastState    = DRY;   // tracks previous cycle state for transition detection
 
@@ -219,38 +215,15 @@ void setup() {
 
     connectWiFi();
 
-    // ── Startup calibration ──────────────────────────────────
-    delay(300);
-    int        level = readWaterSensor();
-    WaterState state = evaluateWater(level);
+    // ── Startup ──────────────────────────────────────────────
+    Serial.print("CHIEU CAO CAM BIEN (co dinh): ");
+    Serial.print(sensorHeight, 2);
+    Serial.println(" cm");
 
-    Serial.print("Startup | Level: ");
-    Serial.println(level);
-
-    if (state != DRY) {
-        sensorHeight = DEFAULT_SENSOR_HEIGHT;
-        Serial.print("CANH BAO: Phat hien nuoc khi khoi dong! ");
-        Serial.print("Dung gia tri mac dinh: ");
-        Serial.print(sensorHeight, 2);
-        Serial.println(" cm");
-        // Loop will handle the first wet POST
-    } else {
-        Serial.println("Dang calibrate chieu cao kenh...");
-        float sum = 0.0;
-        for (int i = 0; i < CALIBRATION_SAMPLES; i++) {
-            sum += measureDistance();
-            delay(120);
-        }
-        sensorHeight = sum / CALIBRATION_SAMPLES;
-        Serial.print("Calibration hoan tat. CHIEU CAO KENH: ");
-        Serial.print(sensorHeight, 2);
-        Serial.println(" cm");
-
-        // POST once on startup to register the station as online and dry
-        Serial.println("Startup POST: kho rao, muc nuoc = 0...");
-        postWaterLevel(0, DRY);
-        lastPostTime = millis();
-    }
+    // POST once on startup to register the station as online and dry
+    Serial.println("Startup POST: kho rao, muc nuoc = 0...");
+    postWaterLevel(0, DRY);
+    lastPostTime = millis();
 }
 
 // ---------------------------------------------------------------
@@ -302,8 +275,6 @@ void loop() {
 
     } else {
         // ── DRY ──────────────────────────────────────────────
-        sensorHeight = (EMA_ALPHA * distanceCm) + ((1.0 - EMA_ALPHA) * sensorHeight);
-
         Serial.print("TRANG THAI: kho rao");
         if (waterHeight == 0 && lastState != DRY) {
             Serial.print(" [MUC NUOC VE 0]");
