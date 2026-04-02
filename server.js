@@ -67,6 +67,73 @@ initCsvFile(RESCUE_POINTS_CSV,[
     {id:'rescueAt', title:'rescueAt'},
 ]);
 
+/**
+ * Tính tốc độ dâng nước (cm/giờ) từ mảng bản ghi của một trạm.
+ * Thuật toán:
+ *   1. Lấy tất cả bản ghi trong cửa sổ 5 phút gần nhất.
+ *   2. Tính tốc độ giữa từng cặp bản ghi liên tiếp → mảng rates[].
+ *   3. Khử nhiễu bằng IQR: loại bỏ giá trị nằm ngoài [Q1-1.5×IQR, Q3+1.5×IQR].
+ *   4. Trả về trung bình các rate còn lại.
+ *
+ * @param {Array} records - Mảng bản ghi đã sắp xếp MỚI NHẤT trước, cùng một trạm.
+ * @returns {number|null} Tốc độ dâng nước (cm/h), null nếu không đủ dữ liệu.
+ */
+function calcRiseRate(records) {
+    if (!records || records.length < 2) return null;
+
+    const WINDOW_MS    = 5  * 60 * 1000;   // 5 phút
+    const MIN_GAP_MS   = 1  * 1000;         // bỏ qua các cặp cách nhau < 1 giây
+
+    const latestTime = new Date(records[0].timestamp);
+    if (isNaN(latestTime.getTime())) return null;
+
+    // --- 1. Lấy bản ghi trong cửa sổ 5 phút ---
+    const window = records.filter(r => {
+        const t = new Date(r.timestamp);
+        if (isNaN(t.getTime())) return false;
+        const diff = latestTime - t;
+        return diff >= 0 && diff <= WINDOW_MS;
+    });
+
+    if (window.length < 2) return null;
+
+    // --- 2. Tính tốc độ giữa từng cặp liên tiếp ---
+    const rates = [];
+    for (let i = 0; i < window.length - 1; i++) {
+        const tNewer = new Date(window[i].timestamp);
+        const tOlder = new Date(window[i + 1].timestamp);
+        const deltaMs = tNewer - tOlder;
+        if (deltaMs < MIN_GAP_MS) continue;
+        const deltaLevel = parseFloat(window[i].water_level) - parseFloat(window[i + 1].water_level);
+        if (isNaN(deltaLevel)) continue;
+        rates.push(deltaLevel / (deltaMs / (1000 * 60 * 60)));  // cm/h
+    }
+
+    if (rates.length === 0) return null;
+    if (rates.length === 1) return rates[0];
+
+    // --- 3. Khử nhiễu bằng IQR ---
+    const sorted = [...rates].sort((a, b) => a - b);
+    const q1  = sorted[Math.floor(sorted.length * 0.25)];
+    const q3  = sorted[Math.ceil(sorted.length  * 0.75) - 1];
+    const iqr = q3 - q1;
+
+    let filtered;
+    if (iqr === 0) {
+        // Tất cả rate giống nhau → không có nhiễu, giữ nguyên
+        filtered = rates;
+    } else {
+        const lo = q1 - 1.5 * iqr;
+        const hi = q3 + 1.5 * iqr;
+        filtered = rates.filter(r => r >= lo && r <= hi);
+    }
+
+    if (filtered.length === 0) return null;
+
+    // --- 4. Trung bình các rate sau lọc ---
+    return filtered.reduce((sum, r) => sum + r, 0) / filtered.length;
+}
+
 function readCsv(filePath){
     return new Promise((resolve, reject)=>{
         const result=[];
@@ -179,17 +246,8 @@ app.get('/api/stations/:id', async (req,res)=> {
         // mực nước hiện tại
         const currentLevel=parseFloat(stationLevels[0].water_level);
         
-        // tính tốc độ dâng (so sánh với mực nước trước đó)
-        let riseRate = null;
-        if (stationLevels.length >= 2) {
-            const prevLevel = parseFloat(stationLevels[1].water_level);
-            const currentTime = new Date(stationLevels[0].timestamp);
-            const prevTime = new Date(stationLevels[1].timestamp);
-            const hoursDiff = (currentTime - prevTime) / (1000 * 60 * 60);
-            if (hoursDiff > 0) {
-                riseRate = (currentLevel - prevLevel) / hoursDiff;
-            }
-        }
+        // tính tốc độ dâng — sliding window 5 phút + IQR noise filtering
+        const riseRate = calcRiseRate(stationLevels);
         
         // xác định mức độ ngập
         const thresholdSafe = parseFloat(station.threshold_safe || 50);

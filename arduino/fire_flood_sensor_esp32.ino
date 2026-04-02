@@ -29,13 +29,13 @@
 #include <HTTPClient.h>
 
 // ---------- WiFi credentials ----------
-const char* WIFI_SSID     = "Baba";
-const char* WIFI_PASSWORD = "nguyenquanglinh";
+const char* WIFI_SSID     = "Quang Linh";
+const char* WIFI_PASSWORD = "0905261244";
 
 // ---------- Server ----------
-const char* SERVER_BASE   = "http://172.20.10.2:3000";
-const char* WATER_URL     = "http://172.20.10.2:3000/api/water-level";
-const char* RESCUE_URL    = "http://172.20.10.2:3000/api/rescue-points";
+const char* SERVER_BASE   = "http://192.168.1.32:3000";
+const char* WATER_URL     = "http://192.168.1.32:3000/api/water-level";
+const char* RESCUE_URL    = "http://192.168.1.32:3000/api/rescue-points";
 
 // ---------- Station ----------
 const int   STATION_ID    = 1;
@@ -155,6 +155,38 @@ void updateIndicators(float waterHeight) {
 // ──────────────────────────────────────────────────────────────
 //  Network helpers
 // ──────────────────────────────────────────────────────────────
+// Print a consistent debug banner for every HTTP attempt
+void printRequestDebug(const char* label, const char* url, const String& body) {
+    Serial.println("  ----------------------------------------");
+    Serial.print  ("  [HTTP] "); Serial.println(label);
+    Serial.print  ("  URL   : "); Serial.println(url);
+    Serial.print  ("  WiFi  : "); Serial.print(WiFi.localIP()); Serial.print("  RSSI: "); Serial.print(WiFi.RSSI()); Serial.println(" dBm");
+    Serial.print  ("  Body  : "); Serial.println(body);
+    Serial.println("  ----------------------------------------");
+}
+
+// Decode common negative HTTPClient error codes into human-readable text
+void printHttpError(int code) {
+    String reason;
+    switch (code) {
+        case HTTPC_ERROR_CONNECTION_REFUSED:  reason = "CONNECTION REFUSED — server IP/port wrong or server not running"; break;
+        case HTTPC_ERROR_SEND_HEADER_FAILED:  reason = "SEND HEADER FAILED";   break;
+        case HTTPC_ERROR_SEND_PAYLOAD_FAILED: reason = "SEND PAYLOAD FAILED";  break;
+        case HTTPC_ERROR_NOT_CONNECTED:       reason = "NOT CONNECTED";         break;
+        case HTTPC_ERROR_CONNECTION_LOST:     reason = "CONNECTION LOST";       break;
+        case HTTPC_ERROR_NO_STREAM:           reason = "NO STREAM";             break;
+        case HTTPC_ERROR_NO_HTTP_SERVER:      reason = "NO HTTP SERVER (got response but not HTTP)"; break;
+        case HTTPC_ERROR_TOO_LESS_RAM:        reason = "TOO LESS RAM";          break;
+        case HTTPC_ERROR_ENCODING:            reason = "ENCODING ERROR";        break;
+        case HTTPC_ERROR_STREAM_WRITE:        reason = "STREAM WRITE ERROR";    break;
+        case HTTPC_ERROR_READ_TIMEOUT:        reason = "READ TIMEOUT";          break;
+        default:                              reason = "UNKNOWN (" + String(code) + ")"; break;
+    }
+    Serial.print  ("  [LOI HTTP] Code   : "); Serial.println(code);
+    Serial.print  ("  [LOI HTTP] Reason : "); Serial.println(reason);
+    Serial.println("  Tip: pastikan server chay va IP dung, sau do upload lai.");
+}
+
 void connectWiFi() {
     Serial.print("Dang ket noi WiFi: ");
     Serial.println(WIFI_SSID);
@@ -167,15 +199,21 @@ void connectWiFi() {
     }
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println("\nWiFi ket noi thanh cong!");
-        Serial.print("IP: ");
-        Serial.println(WiFi.localIP());
+        Serial.print("  ESP32 IP : "); Serial.println(WiFi.localIP());
+        Serial.print("  Gateway  : "); Serial.println(WiFi.gatewayIP());
+        Serial.print("  RSSI     : "); Serial.print(WiFi.RSSI()); Serial.println(" dBm");
     } else {
         Serial.println("\n[LOI] Khong the ket noi WiFi.");
+        Serial.println("  Kiem tra: SSID/password, bang tan 2.4GHz, khoang cach router.");
     }
 }
 
 void postWaterLevel(float waterLevel, WaterState state) {
-    if (WiFi.status() != WL_CONNECTED) { connectWiFi(); return; }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("  [WARN] WiFi mat ket noi, dang thu lai...");
+        connectWiFi();
+        return;
+    }
     HTTPClient http;
     http.begin(WATER_URL);
     http.addHeader("Content-Type", "application/json");
@@ -184,15 +222,20 @@ void postWaterLevel(float waterLevel, WaterState state) {
     String body = "{\"station_id\":\"" + String(STATION_ID) +
                   "\",\"water_level\":"  + String(waterLevel, 2) +
                   ",\"confidence\":\""  + confidence + "\"}";
+    printRequestDebug("POST water-level", WATER_URL, body);
     int code = http.POST(body);
     if      (code == 200) Serial.println("  [OK] POST nuoc thanh cong");
     else if (code >  0)   { Serial.print("  [LOI SERVER] HTTP "); Serial.println(code); }
-    else                  { Serial.print("  [LOI] "); Serial.println(http.errorToString(code)); }
+    else                  { printHttpError(code); }
     http.end();
 }
 
 void postFireRescuePoint() {
-    if (WiFi.status() != WL_CONNECTED) { connectWiFi(); return; }
+    if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("  [WARN] WiFi mat ket noi, dang thu lai...");
+        connectWiFi();
+        return;
+    }
     HTTPClient http;
     http.begin(RESCUE_URL);
     http.addHeader("Content-Type", "application/json");
@@ -201,10 +244,11 @@ void postFireRescuePoint() {
                   ",\"urgency\":\"critical\""
                   ",\"type\":\"fire\""
                   ",\"notes\":\"Phat hien hoa hoan tu dong boi cam bien lua - Tram " + String(STATION_ID) + "\"}";
+    printRequestDebug("POST rescue-points (fire)", RESCUE_URL, body);
     int code = http.POST(body);
     if      (code == 200) Serial.println("  [OK] POST hoa hoan thanh cong");
     else if (code >  0)   { Serial.print("  [LOI SERVER] HTTP "); Serial.println(code); }
-    else                  { Serial.print("  [LOI] "); Serial.println(http.errorToString(code)); }
+    else                  { printHttpError(code); }
     http.end();
 }
 
