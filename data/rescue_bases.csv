@@ -1,0 +1,11 @@
+id,name,address,lat,lng,phone,level
+1,Phòng Cảnh sát PCCC & CNCH (PC07) / Đội CC & CNCH Khu vực 1,"183 Phan Đăng Lưu, Khuê Trung, Cẩm Lệ",16.035563,108.213743,02363879116,city
+2,Đội Cảnh sát PCCC & CNCH - Công an quận Sơn Trà,"53 đường Thành Vinh 2, Thọ Quang, Sơn Trà, Đà Nẵng",16.104650,108.254070,02363922114,city
+3,Đội Cảnh sát Phòng Cháy & Chữa Cháy Ngũ Hành Sơn,"Nguyễn Đức Thuận, Khuê Mỹ, Ngũ Hành Sơn",16.018394,108.250327,02363954114,city
+4,Đội CC & CNCH Khu vực 5,"Trần Nam Trung, Hòa Xuân, Đà Nẵng",16.0017665,108.2161791,02363737114,city
+5,Đội CC & CNCH Khu vực 4,"Đường số 6, KCN Hòa Khánh, Liên Chiểu",16.085322,108.134798,02363730114,city
+6,CAQ Thanh Khê,"210 Hà Huy Tập, Hòa Khê, Thanh Khê",16.0594,108.1842,02363712835,district
+7,CAQ Ngũ Hành Sơn,"496 Ngô Quyền, An Hải Bắc",16.0583,108.2366,02363847483,district
+8,CAQ Liên Chiểu,"42 Ngô Thì Nhậm, Hòa Khánh Bắc, Liên Chiểu",16.0621,108.1492,02363841503,district
+9,CAQ Cẩm Lệ,"298 Cách Mạng Tháng 8, Hòa Thọ Đông, Cẩm Lệ",16.0152,108.2045,02363674013,district
+10,CAH Hòa Vang,"Quốc lộ 1A, Hòa Châu, Hòa Vang",15.9934,108.2078,02363685114,district

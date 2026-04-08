@@ -1,3 +1,10 @@
+// ─── Routing engines ──────────────────────────────────────────────────────────
+// Option A: OSRM  — draws route on the Leaflet map (free, no key)
+// Option C: Google Maps link — opens the route in Google Maps in a new tab
+
+// Rescue bases are loaded from /api/rescue-bases (data/rescue_bases.csv)
+let rescueBases = [];
+
 const DN_center = [16.0544, 108.2022];
 const map = L.map("map", { zoomControl: true, minZoom: 10, maxZoom: 18 }).setView(DN_center, 13);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -7,6 +14,9 @@ L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
 
 const rescueMarkersLayer  = L.layerGroup().addTo(map);
 const stationMarkersLayer = L.layerGroup().addTo(map);
+const basesLayer          = L.layerGroup().addTo(map);
+
+let currentRouteLayer = null; // active route polyline + markers
 
 // id → L.Marker  (never cleared after init)
 const stationMarkersMap = new Map();
@@ -132,11 +142,182 @@ function buildRescuePopupContent(point) {
       <strong>🕐 Thời gian:</strong> ${new Date(point.timestamp).toLocaleString('vi-VN')}<br/>
       ${point.notes ? `<hr style="margin:8px 0;border-color:#ddd;"/><strong>📝 Ghi chú:</strong><br/>${point.notes}<br/>` : ''}
       ${isRescued && point.rescuedAt ? `<hr style="margin:8px 0;border-color:#ddd;"/><strong>✓ Đã cứu lúc:</strong> ${new Date(point.rescuedAt).toLocaleString('vi-VN')}<br/>` : ''}
-      <div style="margin-top:12px;">
-        ${!isRescued ? `<button onclick="markAsRescued('${point.id}')" style="background:#2ecc71;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;margin-right:5px;font-weight:600;">✓ Đánh dấu đã cứu</button>` : ''}
-        <button onclick="deleteRescuePoint('${point.id}')" style="background:#e74c3c;color:white;border:none;padding:8px 16px;border-radius:4px;cursor:pointer;font-weight:600;">🗑️ Xóa</button>
+      <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px;">
+        ${!isRescued ? `<button onclick="navigateToPoint(${parseFloat(point.lat)}, ${parseFloat(point.lng)})"
+                style="background:#2980b9;color:white;border:none;padding:8px 14px;border-radius:4px;cursor:pointer;font-weight:600;flex:1;min-width:140px;">
+          🚗 Điều hướng
+        </button>` : ''}
+        ${!isRescued ? `<button onclick="markAsRescued('${point.id}')" style="background:#2ecc71;color:white;border:none;padding:8px 14px;border-radius:4px;cursor:pointer;font-weight:600;flex:1;min-width:100px;">✓ Đã cứu</button>` : ''}
+        <button onclick="deleteRescuePoint('${point.id}')" style="background:#e74c3c;color:white;border:none;padding:8px 14px;border-radius:4px;cursor:pointer;font-weight:600;">🗑️</button>
       </div>
     </div>`;
+}
+
+// ─── Rescue base icon ─────────────────────────────────────────────────────────
+// City-level (PCCC): bold red-orange 🚒  |  District-level (CAQ/CAH): purple 🚓
+const BASE_STYLE = {
+    city:     { color: '#c0392b', emoji: '🚒', size: 36 },
+    district: { color: '#7d3c98', emoji: '🚓', size: 30 },
+};
+
+function buildBaseIcon(level) {
+    const s = BASE_STYLE[level] || BASE_STYLE.district;
+    return L.divIcon({
+        className: 'base-marker',
+        html: `<div style="background:${s.color};width:${s.size}px;height:${s.size}px;border-radius:50%;
+                    border:3px solid white;box-shadow:0 0 12px ${s.color}80;
+                    display:flex;align-items:center;justify-content:center;font-size:${s.size * 0.5}px;">${s.emoji}</div>`,
+        iconSize: [s.size, s.size], iconAnchor: [s.size / 2, s.size / 2]
+    });
+}
+
+// ─── Routing helpers ──────────────────────────────────────────────────────────
+
+/** Haversine distance in metres between two lat/lng points */
+function haversine(lat1, lng1, lat2, lng2) {
+    const R  = 6371000;
+    const φ1 = lat1 * Math.PI / 180, φ2 = lat2 * Math.PI / 180;
+    const Δφ = (lat2 - lat1) * Math.PI / 180;
+    const Δλ = (lng2 - lng1) * Math.PI / 180;
+    const a  = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Select the best base to dispatch to a rescue point.
+ *
+ * Priority rules:
+ *  1. Always prefer a city-level base.
+ *  2. Exception: if the nearest city-level base is more than 3× farther than
+ *     the nearest district-level base, dispatch the district-level team instead.
+ */
+function selectBase(lat, lng) {
+    const nearest = (arr) => arr.reduce((best, base) => {
+        const d = haversine(lat, lng, parseFloat(base.lat), parseFloat(base.lng));
+        return d < best.dist ? { base, dist: d } : best;
+    }, { base: null, dist: Infinity });
+
+    const city     = nearest(rescueBases.filter(b => b.level === 'city'));
+    const district = nearest(rescueBases.filter(b => b.level === 'district'));
+
+    if (!city.base)     return district.base;   // no city bases loaded
+    if (!district.base) return city.base;       // no district bases loaded
+
+    // Fall back to district only when city is > 3× farther
+    return (city.dist > 3 * district.dist) ? district.base : city.base;
+}
+
+/** Fetch route from OSRM (Option A — free, no key) */
+async function fetchRouteOSRM(fromLat, fromLng, toLat, toLng) {
+    const url = `https://router.project-osrm.org/route/v1/driving/${fromLng},${fromLat};${toLng},${toLat}?overview=full&geometries=geojson`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    if (!data.routes?.length) throw new Error('OSRM: no route found');
+    const route = data.routes[0];
+    return {
+        coords:   route.geometry.coordinates.map(([lng, lat]) => [lat, lng]),
+        distance: (route.distance / 1000).toFixed(1),
+        duration: Math.round(route.duration / 60),
+        engine:   'OSRM'
+    };
+}
+
+function showRoutePanel(base, result, destLat, destLng) {
+    const s        = BASE_STYLE[base.level] || BASE_STYLE.district;
+    const levelTag = base.level === 'city' ? 'Cấp thành phố' : 'Cấp quận/huyện';
+    const baseLat  = parseFloat(base.lat);
+    const baseLng  = parseFloat(base.lng);
+
+    document.getElementById('route-base-info').innerHTML =
+        `<b>${s.emoji} ${base.name}</b>
+         <span style="color:${s.color};font-size:10px;border:1px solid ${s.color};
+               border-radius:8px;padding:1px 6px;margin-left:4px;">${levelTag}</span><br/>
+         <span style="color:#7f8c8d;">${base.address}</span>
+         ${base.phone ? `<br/><span style="color:#95a5a6;">📞 ${base.phone}</span>` : ''}`;
+    document.getElementById('route-distance').textContent = result.distance;
+    document.getElementById('route-duration').textContent = result.duration;
+
+    // Option C — Google Maps link
+    const gmapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${baseLat},${baseLng}&destination=${destLat},${destLng}&travelmode=driving`;
+    document.getElementById('route-gmaps-link').href = gmapsUrl;
+
+    document.getElementById('route-panel').style.display = 'block';
+}
+
+window.clearRoute = function() {
+    if (currentRouteLayer) { map.removeLayer(currentRouteLayer); currentRouteLayer = null; }
+    document.getElementById('route-panel').style.display = 'none';
+};
+
+/** Main entry-point called from rescue point popup */
+window.navigateToPoint = async function(lat, lng) {
+    const base = selectBase(lat, lng);
+    if (!base) { alert('Không tìm thấy đội cứu hộ.'); return; }
+
+    const baseLat = parseFloat(base.lat);
+    const baseLng = parseFloat(base.lng);
+    const s       = BASE_STYLE[base.level] || BASE_STYLE.district;
+
+    clearRoute();
+    currentRouteLayer = L.layerGroup().addTo(map);
+
+    // Show loading state immediately
+    document.getElementById('route-base-info').innerHTML =
+        `<b>${s.emoji} ${base.name}</b><br/><span style="color:#7f8c8d;">⏳ Đang tính đường...</span>`;
+    document.getElementById('route-distance').textContent = '—';
+    document.getElementById('route-duration').textContent = '—';
+    document.getElementById('route-gmaps-link').href = '#';
+    document.getElementById('route-panel').style.display = 'block';
+
+    try {
+        // Option A — OSRM draws the route on the Leaflet map
+        const result = await fetchRouteOSRM(baseLat, baseLng, lat, lng);
+
+        L.polyline(result.coords, { color: s.color, weight: 5, opacity: 0.85 })
+            .addTo(currentRouteLayer);
+        L.circleMarker([baseLat, baseLng], {
+            radius: 11, color: s.color, fillColor: s.color, fillOpacity: 0.9, weight: 3
+        }).bindTooltip(`${s.emoji} ${base.name}`, { permanent: false })
+          .addTo(currentRouteLayer);
+        L.circleMarker([lat, lng], {
+            radius: 10, color: '#c0392b', fillColor: '#e74c3c', fillOpacity: 0.9, weight: 3
+        }).bindTooltip('📍 Điểm cứu hộ', { permanent: false })
+          .addTo(currentRouteLayer);
+
+        map.fitBounds(L.latLngBounds(result.coords), { padding: [60, 60], animate: true });
+        showRoutePanel(base, result, lat, lng);
+    } catch (err) {
+        console.error('Routing error:', err);
+        document.getElementById('route-panel').style.display = 'none';
+        alert('Không thể tải đường đi. Kiểm tra kết nối internet.');
+    }
+};
+
+// ─── Draw rescue team bases on map ───────────────────────────────────────────
+
+async function initBasesLayer() {
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/rescue-bases`);
+        rescueBases = await res.json();
+    } catch (e) {
+        console.error('Cannot load rescue bases:', e);
+        return;
+    }
+
+    for (const base of rescueBases) {
+        const s        = BASE_STYLE[base.level] || BASE_STYLE.district;
+        const levelTag = base.level === 'city' ? 'Cấp thành phố' : 'Cấp quận/huyện';
+        L.marker([parseFloat(base.lat), parseFloat(base.lng)], { icon: buildBaseIcon(base.level) })
+            .bindPopup(`<div style="min-width:230px;">
+                <b style="font-size:14px;">${s.emoji} ${base.name}</b>
+                <span style="display:inline-block;margin-left:6px;font-size:10px;background:${s.color};
+                      color:white;border-radius:8px;padding:1px 7px;">${levelTag}</span><br/>
+                <hr style="margin:8px 0;border-color:#ddd;"/>
+                <strong>📍</strong> ${base.address}<br/>
+                ${base.phone ? `<strong>📞</strong> ${base.phone}` : ''}
+            </div>`)
+            .addTo(basesLayer);
+    }
 }
 
 // ─── Network helpers ──────────────────────────────────────────────────────────
@@ -188,16 +369,28 @@ async function xoaAll() {
 
 // ─── Rescue points: diff-and-patch ───────────────────────────────────────────
 
+const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Returns true if the point should be hidden from the map (rescued > 1 week ago) */
+function isExpired(point) {
+    if (point.status !== 'rescued') return false;
+    const rescuedAt = point.rescuedAt ? new Date(point.rescuedAt) : null;
+    return rescuedAt && !isNaN(rescuedAt) && (Date.now() - rescuedAt.getTime() > ONE_WEEK_MS);
+}
+
 async function hienThiDiemSOS() {
     try {
-        const points = await laydiemSOS();
+        const rawPoints = await laydiemSOS();
+
+        // Exclude points rescued more than 1 week ago from the map (still kept in sidebar filter)
+        const points = rawPoints.filter(p => !isExpired(p));
         allDiem         = points;
         allRescuePoints = points;
 
-        // Remove markers for deleted points
-        const serverIds = new Set(points.map(p => p.id));
+        // Remove markers for deleted or expired points
+        const visibleIds = new Set(points.map(p => p.id));
         for (const [id, marker] of rescueMarkersMap) {
-            if (!serverIds.has(id)) {
+            if (!visibleIds.has(id)) {
                 rescueMarkersLayer.removeLayer(marker);
                 rescueMarkersMap.delete(id);
                 rescueDataCache.delete(id);
@@ -420,6 +613,7 @@ window.focusOnStation = function(stationId) {
 
 // ─── Startup ─────────────────────────────────────────────────────────────────
 
+initBasesLayer();
 hienThiDiemSOS();
 loadStations();
 

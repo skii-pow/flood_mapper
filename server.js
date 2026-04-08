@@ -15,6 +15,7 @@ app.use(express.static('.'));
 
 const WATER_LEVER_CSV=path.join(__dirname, 'data', 'water_level.csv');
 const RESCUE_POINTS_CSV=path.join(__dirname, 'data', 'rescue_points.csv');
+const RESCUE_BASES_CSV =path.join(__dirname, 'data', 'rescue_bases.csv');
 const STAIONS_CSV=path.join(__dirname, 'data', 'stations.csv');
 
 if (!fs.existsSync(path.join(__dirname, 'data'))){
@@ -534,6 +535,16 @@ app.delete('/api/rescue-points/:id', async (req,res)=>{
         res.status(500).json({error:error.message});
     }
 });
+// trả về danh sách trụ sở đội cứu hộ từ CSV
+app.get('/api/rescue-bases', async (req, res) => {
+    try {
+        const bases = await readCsv(RESCUE_BASES_CSV);
+        res.json(bases);
+    } catch(error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.listen(PORT,HOST,()=>{
     console.log(`Server đang chạy tại http://localhost:${PORT}`)
 })
